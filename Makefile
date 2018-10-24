@@ -35,7 +35,7 @@ docker-push:
 
 deploy-k8s:
 	@echo deploy k8s
-	kubectl patch deployment aepp-explorer --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/image", "value":"$(DOCKER_REGISTRY)/$(DOCKER_IMAGE):$(DOCKER_TAG)"}]'
+	kubectl patch deployment $(DOCKER_IMAGE) --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/image", "value":"$(DOCKER_REGISTRY)/$(DOCKER_IMAGE):$(DOCKER_TAG)"}]'
 	@echo deploy k8s done
 
 debug-start:
