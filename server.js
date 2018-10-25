@@ -12,6 +12,26 @@ const BL_KEY = process.env.NODE_BL_KEY
 const BURNER_CONTRACT = process.env.NODE_BURNER_CONTRACT
 const WEB3_URL = process.env.NODE_WEB3_URL
 const BL_URL = `https://api.backendless.com/${BL_ID}/${BL_KEY}`
+const LOGIN = process.env.NODE_BL_LOGIN;
+const PASSWORD = process.env.NODE_BL_PASSWORD;
+
+let loginRequestHeaders = {
+  "Content-Type": "application/json",
+};
+
+let user_token;
+
+axios.post(
+  `${BL_URL}/users/login`,
+  { login : LOGIN, password : PASSWORD},
+  { headers: loginRequestHeaders})
+  .then(function(response) {
+    user_token = response.data["user-token"];
+    console.log("LOGGED IN. User token: " + user_token);
+}).catch((err) => {
+  console.log("LOGIN FAILED!");
+  console.log(err);
+});
 
 web3 = new Web3(new Web3.providers.WebsocketProvider(WEB3_URL))
 const TokenBurner = new web3.eth.Contract(tokenBurnerABI, BURNER_CONTRACT)
@@ -32,7 +52,9 @@ TokenBurner.events.Burn({fromBlock: "latest" })
         "pubKey" : pubkey,
         "value" : value,
         "transactionHash" : txID
-      }).then(function(response){
+      },
+      {"user-token" : user_token})
+      .then(function(response){
         if (response.status == 200) {
           console.log("Data saved with ID " + response.data['objectId'])
         } else if (response.status == 400) {
