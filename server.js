@@ -53,7 +53,7 @@ TokenBurner.events.Burn({fromBlock: "latest" })
         "value" : value,
         "transactionHash" : txID
       },
-      {"user-token" : user_token})
+      { headers: {"user-token" : user_token}})
       .then(function(response){
         if (response.status == 200) {
           console.log("Data saved with ID " + response.data['objectId'])
