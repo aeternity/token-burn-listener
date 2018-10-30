@@ -2,6 +2,7 @@
 const Web3 = require("web3")
 const axios = require('axios')
 const tokenBurnerABI = require("./tokenBurner_abi_without_checks.json")
+const schedule = require("node-schedule");
 
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').load()
@@ -69,4 +70,76 @@ TokenBurner.events.Burn({fromBlock: "latest" })
   })
 
 
+// Check every 10 min if the table size is equal to the burnCount
+schedule.scheduleJob("* */10 * * * *", async () => {
+  console.log("----- SCHEDULER: start!")
+
+  let currentBlock = await web3.eth.getBlockNumber();
+  console.log("----- SCHEDULER: Current block " + currentBlock)
+
+  TokenBurner.methods.burnCount().call(async function(error, result){
+    let burnCount = result;
+    console.log("----- SCHEDULER: Current burn count " + burnCount);
+    let response = await axios.get(
+      `${BL_URL}/data/TokenBurnings?props=Count(objectId)`,
+      {"user-token" : user_token}
+    );
+    let entryCount = response.data[0].count;
+    console.log("----- SCHEDULER: Current entry count " + entryCount);
+
+    if (burnCount <= entryCount) {
+      console.log("----- SCHEDULER: OK.");
+      return;
+    }
+      
+    await TokenBurner.getPastEvents(
+      "Burn",
+      { 
+        fromBlock: currentBlock - 1000, 
+        toBlock: currentBlock,
+      },
+      async (errors, events) => {
+        if (errors) {
+          console.log("----- SCHEDULER: ERROR! " + errors);
+          return;
+        }
+        if (events.length <= 0){
+          console.log("----- SCHEDULER: No events found, although the entry count and the burn count are not equal!"
+          + "\nPlease decrease the fromBlock manually or check if the database is ok.");
+        }
+        let returns;
+
+        for (let i=0; i<events.length; i++) {
+          returns = events[i].returnValues;
+          response = await axios.get(
+            `${BL_URL}/data/TokenBurnings?where=count%3D${returns._count}`,
+            {"user-token" : user_token}
+          );
+      
+          if (response.data.length != 0) continue;
+          console.log("----- SCHEDULER: Found a missing entry with transactionHash "+ events[i].transactionHash +". Writing into the database ... ");
+          axios.post(
+            `${BL_URL}/data/TokenBurnings`, {
+            "count" : parseInt(returns['_count']),
+            "deliveryPeriod" : parseInt(returns['_deliveryPeriod']),
+            "from" : returns['_from'],
+            "pubKey" : web3.utils.toUtf8(returns['_pubkey']),
+            "value" : returns['_value'],
+            "transactionHash" : events[i].transactionHash
+          },
+          { headers: {"user-token" : user_token}})
+          .then(function(response){
+            if (response.status == 200) {
+              console.log("----- SCHEDULER: Data saved with ID " + response.data['objectId'])
+            } else if (response.status == 400) {
+              console.log("----- SCHEDULER: FAILURE! Data not saved! Check parameters. It should not happen in production")
+            } else {
+              console.log("----- SCHEDULER: OOOOOPS " + response)
+            }
+          }).catch((error) => console.log("----- SCHEDULER: ERROR! " + error))
+        }
+      }
+    )
+  })
+})
 
