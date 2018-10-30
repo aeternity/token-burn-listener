@@ -71,7 +71,7 @@ TokenBurner.events.Burn({fromBlock: "latest" })
 
 
 // Check every 10 min if the table size is equal to the burnCount
-schedule.scheduleJob("* */10 * * * *", async () => {
+schedule.scheduleJob("* */5 * * * *", async () => {
   console.log("----- SCHEDULER: start!")
 
   let currentBlock = await web3.eth.getBlockNumber();
@@ -95,7 +95,7 @@ schedule.scheduleJob("* */10 * * * *", async () => {
     await TokenBurner.getPastEvents(
       "Burn",
       { 
-        fromBlock: currentBlock - 1000, 
+        fromBlock: currentBlock - 500,
         toBlock: currentBlock,
       },
       async (errors, events) => {
