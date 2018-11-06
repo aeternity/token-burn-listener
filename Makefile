@@ -2,7 +2,8 @@ GIT_DESCR = $(shell git describe --always)
 # build output folder
 OUTPUTFOLDER = dist
 # docker image
-DOCKER_REGISTRY = 166568770115.dkr.ecr.eu-central-1.amazonaws.com/aeternity
+DOCKER_REGISTRY_AWS = 166568770115.dkr.ecr.eu-central-1.amazonaws.com/aeternity
+DOCKER_REGISTRY_GCP = eu.gcr.io/aeternity-token-burn-listener/aeternity
 DOCKER_IMAGE = token-burn-listener
 DOCKER_TAG = $(shell git describe --always --tags)
 
@@ -26,16 +27,31 @@ docker-build:
 	docker build -t $(DOCKER_IMAGE) -f Dockerfile .
 	@echo done
 
-docker-push:
-	@echo push image
-	docker tag $(DOCKER_IMAGE) $(DOCKER_REGISTRY)/$(DOCKER_IMAGE):$(DOCKER_TAG)
+docker-push-all: docker-push-aws docker-push-gcp
+
+docker-push-aws:
+	@echo push image - aws
+	docker tag $(DOCKER_IMAGE) $(DOCKER_REGISTRY_AWS)/$(DOCKER_IMAGE):$(DOCKER_TAG)
 	aws ecr get-login --no-include-email --region eu-central-1 --profile aeternity-sdk | sh
-	docker push $(DOCKER_REGISTRY)/$(DOCKER_IMAGE):$(DOCKER_TAG)
+	docker push $(DOCKER_REGISTRY_AWS)/$(DOCKER_IMAGE):$(DOCKER_TAG)
 	@echo done
 
-deploy-k8s:
-	@echo deploy k8s
-	kubectl patch deployment $(DOCKER_IMAGE) --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/image", "value":"$(DOCKER_REGISTRY)/$(DOCKER_IMAGE):$(DOCKER_TAG)"}]'
+docker-push-gcp:
+	@echo push image - gcp
+	docker tag $(DOCKER_IMAGE) $(DOCKER_REGISTRY_GCP)/$(DOCKER_IMAGE):$(DOCKER_TAG)
+	docker push $(DOCKER_REGISTRY_GCP)/$(DOCKER_IMAGE):$(DOCKER_TAG)
+	@echo done
+
+deploy-k8s-all: deploy-k8s-aws deploy-k8s-gcp
+
+deploy-k8s-aws:
+	@echo deploy k8s - aws
+	kubectl patch deployment $(DOCKER_IMAGE) --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/image", "value":"$(DOCKER_REGISTRY_AWS)/$(DOCKER_IMAGE):$(DOCKER_TAG)"}]'
+	@echo deploy k8s done
+
+deploy-k8s-gcp:
+	@echo deploy k8s - gcp
+	kubectl patch deployment $(DOCKER_IMAGE) --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/image", "value":"$(DOCKER_REGISTRY_GCP)/$(DOCKER_IMAGE):$(DOCKER_TAG)"}]'
 	@echo deploy k8s done
 
 debug-start:
