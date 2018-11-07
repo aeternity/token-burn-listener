@@ -32,6 +32,7 @@ axios.post(
 }).catch((err) => {
   console.log("LOGIN FAILED!");
   console.log(err);
+  throw err;
 });
 
 web3 = new Web3(new Web3.providers.WebsocketProvider(WEB3_URL))
@@ -66,18 +67,23 @@ TokenBurner.events.Burn({fromBlock: "latest" })
       }).catch((error) => console.log(error))
   })
   .on('error', function(error) {
-    console.log(error)
+    console.log(error);
+    throw error;
   })
 
 
 // Check every 10 min if the table size is equal to the burnCount
-schedule.scheduleJob("* */5 * * * *", async () => {
+schedule.scheduleJob("*/5 * * * *", async () => {
   console.log("----- SCHEDULER: start!")
 
   let currentBlock = await web3.eth.getBlockNumber();
   console.log("----- SCHEDULER: Current block " + currentBlock)
 
   TokenBurner.methods.burnCount().call(async function(error, result){
+    if (error) {
+      console.log("----- SCHEDULER: ERROR! " + error);
+      throw error;
+    }
     let burnCount = result;
     console.log("----- SCHEDULER: Current burn count " + burnCount);
     let response = await axios.get(
@@ -101,7 +107,7 @@ schedule.scheduleJob("* */5 * * * *", async () => {
       async (errors, events) => {
         if (errors) {
           console.log("----- SCHEDULER: ERROR! " + errors);
-          return;
+          throw errors;
         }
         if (events.length <= 0){
           console.log("----- SCHEDULER: No events found, although the entry count and the burn count are not equal!"
@@ -136,7 +142,7 @@ schedule.scheduleJob("* */5 * * * *", async () => {
             } else {
               console.log("----- SCHEDULER: OOOOOPS " + response)
             }
-          }).catch((error) => console.log("----- SCHEDULER: ERROR! " + error))
+          })
         }
       }
     )
