@@ -15,6 +15,7 @@ const WEB3_URL = process.env.NODE_WEB3_URL
 const BL_URL = `https://api.backendless.com/${BL_ID}/${BL_KEY}`
 const LOGIN = process.env.NODE_BL_LOGIN;
 const PASSWORD = process.env.NODE_BL_PASSWORD;
+const TABLE = process.env.NODE_BL_TABLE;
 
 let loginRequestHeaders = {
   "Content-Type": "application/json",
@@ -47,7 +48,7 @@ TokenBurner.events.Burn({fromBlock: "latest" })
     let pubkey = web3.utils.toUtf8(returns['_pubkey'])
 
     axios.post(
-      `${BL_URL }/data/TokenBurnings`, {
+      `${BL_URL }/data/${TABLE}`, {
         "count" : parseInt(returns['_count']),
         "deliveryPeriod" : parseInt(returns['_deliveryPeriod']),
         "from" : returns['_from'],
@@ -87,7 +88,7 @@ schedule.scheduleJob("*/5 * * * *", async () => {
     let burnCount = result;
     console.log("----- SCHEDULER: Current burn count " + burnCount);
     let response = await axios.get(
-      `${BL_URL}/data/TokenBurnings?props=Count(objectId)`,
+      `${BL_URL}/data/${TABLE}?props=Count(objectId)`,
       {"user-token" : user_token}
     );
     let entryCount = response.data[0].count;
@@ -118,14 +119,14 @@ schedule.scheduleJob("*/5 * * * *", async () => {
         for (let i=0; i<events.length; i++) {
           returns = events[i].returnValues;
           response = await axios.get(
-            `${BL_URL}/data/TokenBurnings?where=count%3D${returns._count}`,
+            `${BL_URL}/data/${TABLE}?where=count%3D${returns._count}`,
             {"user-token" : user_token}
           );
       
           if (response.data.length != 0) continue;
           console.log("----- SCHEDULER: Found a missing entry with transactionHash "+ events[i].transactionHash +". Writing into the database ... ");
           axios.post(
-            `${BL_URL}/data/TokenBurnings`, {
+            `${BL_URL}/data/${TABLE}`, {
             "count" : parseInt(returns['_count']),
             "deliveryPeriod" : parseInt(returns['_deliveryPeriod']),
             "from" : returns['_from'],
