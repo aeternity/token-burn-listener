@@ -36,7 +36,21 @@ axios.post(
   throw err;
 });
 
-web3 = new Web3(new Web3.providers.WebsocketProvider(WEB3_URL))
+const provider = new Web3.providers.WebsocketProvider(WEB3_URL)
+const web3 = new Web3(provider)
+provider.on('error', error => {
+  console.log('WS Error');
+  console.log(error);
+  throw error;
+  process.exit(1);
+});
+provider.on('end', error => {
+  console.log('WS closed');
+  console.log(error);
+  throw error;
+  process.exit(1);
+});
+
 const TokenBurner = new web3.eth.Contract(tokenBurnerABI, BURNER_CONTRACT)
 
 TokenBurner.events.Burn({fromBlock: "latest" })
@@ -70,6 +84,7 @@ TokenBurner.events.Burn({fromBlock: "latest" })
   .on('error', function(error) {
     console.log(error);
     throw error;
+    process.exit(1);
   })
 
 
