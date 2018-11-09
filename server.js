@@ -38,13 +38,13 @@ axios.post(
 
 const provider = new Web3.providers.WebsocketProvider(WEB3_URL)
 const web3 = new Web3(provider)
-provider.on('error', errore => {
+provider.on('error', error => {
   console.log('WS Error');
   console.log(error);
   throw error;
   process.exit(1);
 });
-provider.on('end', errore => {
+provider.on('end', error => {
   console.log('WS closed');
   console.log(error);
   throw error;
