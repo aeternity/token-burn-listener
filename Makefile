@@ -5,6 +5,7 @@ OUTPUTFOLDER = dist
 DOCKER_REGISTRY_AWS = 166568770115.dkr.ecr.eu-central-1.amazonaws.com/aeternity
 DOCKER_REGISTRY_GCP = eu.gcr.io/aeternity-token-burn-listener/aeternity
 DOCKER_IMAGE = token-burn-listener
+K8S_DEPLOYMENT = token-burn-listener-production
 DOCKER_TAG = $(shell git describe --always --tags)
 
 
@@ -46,12 +47,12 @@ deploy-k8s-all: deploy-k8s-aws deploy-k8s-gcp
 
 deploy-k8s-aws:
 	@echo deploy k8s - aws
-	kubectl patch deployment $(DOCKER_IMAGE) --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/image", "value":"$(DOCKER_REGISTRY_AWS)/$(DOCKER_IMAGE):$(DOCKER_TAG)"}]'
+	kubectl patch deployment $(K8S_DEPLOYMENT) --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/image", "value":"$(DOCKER_REGISTRY_AWS)/$(DOCKER_IMAGE):$(DOCKER_TAG)"}]'
 	@echo deploy k8s done
 
 deploy-k8s-gcp:
 	@echo deploy k8s - gcp
-	kubectl patch deployment $(DOCKER_IMAGE) --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/image", "value":"$(DOCKER_REGISTRY_GCP)/$(DOCKER_IMAGE):$(DOCKER_TAG)"}]'
+	kubectl patch deployment $(K8S_DEPLOYMENT) --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/image", "value":"$(DOCKER_REGISTRY_GCP)/$(DOCKER_IMAGE):$(DOCKER_TAG)"}]'
 	@echo deploy k8s done
 
 debug-start:
