@@ -3,6 +3,7 @@ const Web3 = require("web3")
 const axios = require('axios')
 const tokenBurnerABI = require("./tokenBurner_abi_without_checks.json")
 const schedule = require("node-schedule");
+const Sentry = require('@sentry/node');
 
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').load()
@@ -16,6 +17,9 @@ const BL_URL = `https://api.backendless.com/${BL_ID}/${BL_KEY}`
 const LOGIN = process.env.NODE_BL_LOGIN;
 const PASSWORD = process.env.NODE_BL_PASSWORD;
 const TABLE = process.env.NODE_BL_TABLE;
+const SENTRY_URL = process.env.NODE_SENTRY_URL;
+
+Sentry.init({ dsn:SENTRY_URL });
 
 let loginRequestHeaders = {
   "Content-Type": "application/json",
@@ -33,6 +37,7 @@ axios.post(
 }).catch((err) => {
   console.log("LOGIN FAILED!");
   console.log(err);
+  Sentry.captureMessage(err);
   throw err;
 });
 
@@ -41,12 +46,14 @@ const web3 = new Web3(provider)
 provider.on('error', error => {
   console.log('WS Error');
   console.log(error);
+  Sentry.captureMessage('WS Error');
   throw error;
   process.exit(1);
 });
 provider.on('end', error => {
   console.log('WS closed');
   console.log(error);
+  Sentry.captureMessage('WS closed');
   throw error;
   process.exit(1);
 });
@@ -55,11 +62,12 @@ const TokenBurner = new web3.eth.Contract(tokenBurnerABI, BURNER_CONTRACT)
 
 TokenBurner.events.Burn({fromBlock: "latest" })
   .on('data', function(event){
-    console.log(event)
     let txID = event.transactionHash
     let returns = event.returnValues
     let value = returns['_value']
     let pubkey = web3.utils.toUtf8(returns['_pubkey'])
+
+    console.log("Burn event:", parseInt(returns['_count']), value, txID)
 
     axios.post(
       `${BL_URL }/data/${TABLE}`, {
@@ -74,15 +82,22 @@ TokenBurner.events.Burn({fromBlock: "latest" })
       .then(function(response){
         if (response.status == 200) {
           console.log("Data saved with ID " + response.data['objectId'])
-        } else if (response.status == 400) {
-          console.log("FAILURE! Check parameters. It should not happen in production")
         } else {
           console.log(response)
+          Sentry.captureMessage(response.status, response.statusText, response.data.message);
         }
-      }).catch((error) => console.log(error))
+      }).catch((error) => {
+        // 1155 is `duplicateValue`, that is normal because of redundancy
+        if(error.response.data.code == 1155) {
+          console.log("Event was already present in table")
+        } else {
+          Sentry.captureException(error);
+          console.log(error)
+        }
+      })
   })
   .on('error', function(error) {
-    console.log(error);
+    Sentry.captureException(error);
     throw error;
     process.exit(1);
   })
@@ -98,6 +113,7 @@ schedule.scheduleJob("*/5 * * * *", async () => {
   TokenBurner.methods.burnCount().call(async function(error, result){
     if (error) {
       console.log("----- SCHEDULER: ERROR! " + error);
+      Sentry.captureException(error);
       throw error;
     }
     let burnCount = result;
@@ -113,10 +129,10 @@ schedule.scheduleJob("*/5 * * * *", async () => {
       console.log("----- SCHEDULER: OK.");
       return;
     }
-      
+
     await TokenBurner.getPastEvents(
       "Burn",
-      { 
+      {
         fromBlock: currentBlock - 500,
         toBlock: currentBlock,
       },
@@ -137,7 +153,7 @@ schedule.scheduleJob("*/5 * * * *", async () => {
             `${BL_URL}/data/${TABLE}?where=count%3D${returns._count}`,
             {"user-token" : user_token}
           );
-      
+
           if (response.data.length != 0) continue;
           console.log("----- SCHEDULER: Found a missing entry with transactionHash "+ events[i].transactionHash +". Writing into the database ... ");
           axios.post(
@@ -153,10 +169,17 @@ schedule.scheduleJob("*/5 * * * *", async () => {
           .then(function(response){
             if (response.status == 200) {
               console.log("----- SCHEDULER: Data saved with ID " + response.data['objectId'])
-            } else if (response.status == 400) {
-              console.log("----- SCHEDULER: FAILURE! Data not saved! Check parameters. It should not happen in production")
             } else {
               console.log("----- SCHEDULER: OOOOOPS " + response)
+              Sentry.captureMessage("----- SCHEDULER: OOOOOPS " + response);
+            }
+          }).catch((error) => {
+            // 1155 is `duplicateValue`, that is normal because of redundancy
+            if(error.response.data.code == 1155) {
+              console.log("Event was already present in table")
+            } else {
+              Sentry.captureException(error);
+              console.log(error)
             }
           })
         }
