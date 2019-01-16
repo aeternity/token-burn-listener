@@ -4,6 +4,14 @@ const axios = require('axios')
 const tokenBurnerABI = require("./tokenBurner_abi_without_checks.json")
 const schedule = require("node-schedule");
 const Sentry = require('@sentry/node');
+var redis = require("redis");
+const REDIS_URL = process.env.REDIS_URL;
+var client = redis.createClient(REDIS_URL);
+const { promisify } = require('util');
+const getAsync = promisify(client.get).bind(client);
+const setAsync = promisify(client.set).bind(client);
+const fs = require('fs');
+
 
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').load()
@@ -21,25 +29,46 @@ const SENTRY_URL = process.env.NODE_SENTRY_URL;
 
 Sentry.init({ dsn:SENTRY_URL });
 
+
 let loginRequestHeaders = {
   "Content-Type": "application/json",
 };
 
-let user_token;
+var user_token;
 
-axios.post(
-  `${BL_URL}/users/login`,
-  { login : LOGIN, password : PASSWORD},
-  { headers: loginRequestHeaders})
-  .then(function(response) {
-    user_token = response.data["user-token"];
-    console.log("LOGGED IN. User token: " + user_token);
-}).catch((err) => {
-  console.log("LOGIN FAILED!");
-  console.log(err);
-  Sentry.captureMessage(err);
-  throw err;
+// fetch a backendless login token from redis
+
+getAsync('usertoken').then(async function(res) {
+  console.log("Return from redis: " + res); // => 'bar'
+
+  // if there was none set, get a new backendless token from backendless
+  if (res == null) {
+    // get user token from backendless
+    axios.post(
+      `${BL_URL}/users/login`,
+      { login : LOGIN, password : PASSWORD},
+      { headers: loginRequestHeaders})
+      .then(async function(response) {
+        user_token = response.data["user-token"];
+        console.log("LOGGED IN. User token: " + user_token);
+
+        // post backendless login token to redis for other script instances to use (...kubernetes...)
+        let redisResult = await setAsync('usertoken', user_token);
+        console.log(redisResult);
+
+    }).catch((err) => {
+      console.log("LOGIN to backendless FAILED!");
+      console.log(err);
+      Sentry.captureMessage(err);
+      throw err;
+    });
+  } else {
+    user_token = res;
+  }
 });
+
+
+
 
 const provider = new Web3.providers.WebsocketProvider(WEB3_URL)
 const web3 = new Web3(provider)
@@ -103,8 +132,8 @@ TokenBurner.events.Burn({fromBlock: "latest" })
   })
 
 
-// Check every 10 min if the table size is equal to the burnCount
-schedule.scheduleJob("*/5 * * * *", async () => {
+// Check every 5 min if the table size is equal to the burnCount
+schedule.scheduleJob("* /5 * * * *", async () => {
   console.log("----- SCHEDULER: start!")
 
   let currentBlock = await web3.eth.getBlockNumber();
@@ -139,7 +168,8 @@ schedule.scheduleJob("*/5 * * * *", async () => {
       async (errors, events) => {
         if (errors) {
           console.log("----- SCHEDULER: ERROR! " + errors);
-          throw errors;
+          //throw errors;
+          fs.writeFileSync("./error.txt", errors);
         }
         if (events.length <= 0){
           console.log("----- SCHEDULER: No events found, although the entry count and the burn count are not equal!"
@@ -174,6 +204,8 @@ schedule.scheduleJob("*/5 * * * *", async () => {
               Sentry.captureMessage("----- SCHEDULER: OOOOOPS " + response);
             }
           }).catch((error) => {
+            console.log("Backendless error:")
+              console.log(error);
             // 1155 is `duplicateValue`, that is normal because of redundancy
             if(error.response.data.code == 1155) {
               console.log("Event was already present in table")
