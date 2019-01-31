@@ -39,7 +39,7 @@ var user_token;
 // fetch a backendless login token from redis
 
 getAsync('usertoken').then(async function(res) {
-  console.log("Return from redis: " + res); // => 'bar'
+  console.log("Return from redis: " + res);
 
   // if there was none set, get a new backendless token from backendless
   if (res == null) {
@@ -132,8 +132,8 @@ TokenBurner.events.Burn({fromBlock: "latest" })
   })
 
 
-// Check every 5 min if the table size is equal to the burnCount
-schedule.scheduleJob("* /5 * * * *", async () => {
+// Check every 3 min if the table size is equal to the burnCount
+var rescan = async () => {
   console.log("----- SCHEDULER: start!")
 
   let currentBlock = await web3.eth.getBlockNumber();
@@ -163,6 +163,7 @@ schedule.scheduleJob("* /5 * * * *", async () => {
       "Burn",
       {
         fromBlock: currentBlock - 500,
+        //fromBlock: 7078580,
         toBlock: currentBlock,
       },
       async (errors, events) => {
@@ -218,5 +219,8 @@ schedule.scheduleJob("* /5 * * * *", async () => {
       }
     )
   })
-})
+}
+setInterval(() => {
+  rescan();
+}, 180000);
 
