@@ -11,7 +11,7 @@ const { promisify } = require('util');
 const getAsync = promisify(client.get).bind(client);
 const setAsync = promisify(client.set).bind(client);
 const fs = require('fs');
-
+const timestamp = require('time-stamp');
 
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').load()
@@ -29,6 +29,7 @@ const SENTRY_URL = process.env.NODE_SENTRY_URL;
 
 Sentry.init({ dsn:SENTRY_URL });
 
+console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +"Test");
 
 let loginRequestHeaders = {
   "Content-Type": "application/json",
@@ -39,7 +40,7 @@ var user_token;
 // fetch a backendless login token from redis
 
 getAsync('usertoken').then(async function(res) {
-  console.log("Return from redis: " + res);
+  console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +"Return from redis: " + res);
 
   // if there was none set, get a new backendless token from backendless
   if (res == null) {
@@ -50,15 +51,15 @@ getAsync('usertoken').then(async function(res) {
       { headers: loginRequestHeaders})
       .then(async function(response) {
         user_token = response.data["user-token"];
-        console.log("LOGGED IN. User token: " + user_token);
+        console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +"LOGGED IN. User token: " + user_token);
 
         // post backendless login token to redis for other script instances to use (...kubernetes...)
         let redisResult = await setAsync('usertoken', user_token);
-        console.log(redisResult);
+        console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +redisResult);
 
     }).catch((err) => {
-      console.log("LOGIN to backendless FAILED!");
-      console.log(err);
+      console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +"LOGIN to backendless FAILED!");
+      console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +err);
       Sentry.captureMessage(err);
       throw err;
     });
@@ -73,15 +74,15 @@ getAsync('usertoken').then(async function(res) {
 const provider = new Web3.providers.WebsocketProvider(WEB3_URL)
 const web3 = new Web3(provider)
 provider.on('error', error => {
-  console.log('WS Error');
-  console.log(error);
+  console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +'WS Error');
+  console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +error);
   Sentry.captureMessage('WS Error');
   throw error;
   process.exit(1);
 });
 provider.on('end', error => {
-  console.log('WS closed');
-  console.log(error);
+  console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +'WS closed');
+  console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +error);
   Sentry.captureMessage('WS closed');
   throw error;
   process.exit(1);
@@ -96,7 +97,7 @@ TokenBurner.events.Burn({fromBlock: "latest" })
     let value = returns['_value']
     let pubkey = web3.utils.toUtf8(returns['_pubkey'])
 
-    console.log("Burn event:", parseInt(returns['_count']), value, txID)
+    console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +"Burn event:", parseInt(returns['_count']), value, txID)
 
     axios.post(
       `${BL_URL }/data/${TABLE}`, {
@@ -110,18 +111,18 @@ TokenBurner.events.Burn({fromBlock: "latest" })
       { headers: {"user-token" : user_token}})
       .then(function(response){
         if (response.status == 200) {
-          console.log("Data saved with ID " + response.data['objectId'])
+          console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +"Data saved with ID " + response.data['objectId'])
         } else {
-          console.log(response)
+          console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +response)
           Sentry.captureMessage(response.status, response.statusText, response.data.message);
         }
       }).catch((error) => {
         // 1155 is `duplicateValue`, that is normal because of redundancy
         if(error.response.data.code == 1155) {
-          console.log("Event was already present in table")
+          console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +"Event was already present in table")
         } else {
           Sentry.captureException(error);
-          console.log(error)
+          console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +error)
         }
       })
   })
@@ -134,28 +135,28 @@ TokenBurner.events.Burn({fromBlock: "latest" })
 
 // Check every 3 min if the table size is equal to the burnCount
 var rescan = async () => {
-  console.log("----- SCHEDULER: start!")
+  console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +"----- SCHEDULER: start!")
 
   let currentBlock = await web3.eth.getBlockNumber();
-  console.log("----- SCHEDULER: Current block " + currentBlock)
+  console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +"----- SCHEDULER: Current block " + currentBlock)
 
   TokenBurner.methods.burnCount().call(async function(error, result){
     if (error) {
-      console.log("----- SCHEDULER: ERROR! " + error);
+      console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +"----- SCHEDULER: ERROR! " + error);
       Sentry.captureException(error);
       throw error;
     }
     let burnCount = result;
-    console.log("----- SCHEDULER: Current burn count " + burnCount);
+    console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +"----- SCHEDULER: Current burn count " + burnCount);
     let response = await axios.get(
       `${BL_URL}/data/${TABLE}?props=Count(objectId)`,
       {"user-token" : user_token}
     );
     let entryCount = response.data[0].count;
-    console.log("----- SCHEDULER: Current entry count " + entryCount);
+    console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +"----- SCHEDULER: Current entry count " + entryCount);
 
     if (burnCount <= entryCount) {
-      console.log("----- SCHEDULER: OK.");
+      console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +"----- SCHEDULER: OK.");
       return;
     }
 
@@ -168,12 +169,12 @@ var rescan = async () => {
       },
       async (errors, events) => {
         if (errors) {
-          console.log("----- SCHEDULER: ERROR! " + errors);
+          console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +"----- SCHEDULER: ERROR! " + errors);
           //throw errors;
           fs.writeFileSync("./error.txt", errors);
         }
         if (events.length <= 0){
-          console.log("----- SCHEDULER: No events found, although the entry count and the burn count are not equal!"
+          console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +"----- SCHEDULER: No events found, although the entry count and the burn count are not equal!"
           + "\nPlease decrease the fromBlock manually or check if the database is ok.");
         }
         let returns;
@@ -186,7 +187,7 @@ var rescan = async () => {
           );
 
           if (response.data.length != 0) continue;
-          console.log("----- SCHEDULER: Found a missing entry with transactionHash "+ events[i].transactionHash +". Writing into the database ... ");
+          console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +"----- SCHEDULER: Found a missing entry with transactionHash "+ events[i].transactionHash +". Writing into the database ... ");
           axios.post(
             `${BL_URL}/data/${TABLE}`, {
             "count" : parseInt(returns['_count']),
@@ -199,20 +200,20 @@ var rescan = async () => {
           { headers: {"user-token" : user_token}})
           .then(function(response){
             if (response.status == 200) {
-              console.log("----- SCHEDULER: Data saved with ID " + response.data['objectId'])
+              console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +"----- SCHEDULER: Data saved with ID " + response.data['objectId'])
             } else {
-              console.log("----- SCHEDULER: OOOOOPS " + response)
+              console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +"----- SCHEDULER: OOOOOPS " + response)
               Sentry.captureMessage("----- SCHEDULER: OOOOOPS " + response);
             }
           }).catch((error) => {
-            console.log("Backendless error:")
-              console.log(error);
+            console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +"Backendless error:")
+              console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +error);
             // 1155 is `duplicateValue`, that is normal because of redundancy
             if(error.response.data.code == 1155) {
-              console.log("Event was already present in table")
+              console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +"Event was already present in table")
             } else {
               Sentry.captureException(error);
-              console.log(error)
+              console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +error)
             }
           })
         }
