@@ -4,12 +4,7 @@ const axios = require('axios')
 const tokenBurnerABI = require("./tokenBurner_abi_without_checks.json")
 const schedule = require("node-schedule");
 const Sentry = require('@sentry/node');
-var redis = require("redis");
-const REDIS_URL = process.env.REDIS_URL;
-var client = redis.createClient(REDIS_URL);
 const { promisify } = require('util');
-const getAsync = promisify(client.get).bind(client);
-const setAsync = promisify(client.set).bind(client);
 const fs = require('fs');
 const timestamp = require('time-stamp');
 
@@ -17,15 +12,23 @@ if (process.env.NODE_ENV !== 'production') {
   require('dotenv').load()
 }
 
+const REDIS_URL = process.env.REDIS_URL;
 const BL_ID = process.env.NODE_BL_ID
 const BL_KEY = process.env.NODE_BL_KEY
 const BURNER_CONTRACT = process.env.NODE_BURNER_CONTRACT
 const WEB3_URL = process.env.NODE_WEB3_URL
-const BL_URL = `https://api.backendless.com/${BL_ID}/${BL_KEY}`
+const BL_URL = `https://eu-api.backendless.com/${BL_ID}/${BL_KEY}`
 const LOGIN = process.env.NODE_BL_LOGIN;
 const PASSWORD = process.env.NODE_BL_PASSWORD;
 const TABLE = process.env.NODE_BL_TABLE;
 const SENTRY_URL = process.env.NODE_SENTRY_URL;
+
+const redis = require("redis");
+let client = redis.createClient(REDIS_URL);
+const getAsync = promisify(client.get).bind(client);
+const setAsync = promisify(client.set).bind(client);
+
+console.log(BL_URL)
 
 Sentry.init({ dsn:SENTRY_URL });
 
@@ -47,7 +50,7 @@ getAsync('usertoken').then(async function(res) {
     // get user token from backendless
     axios.post(
       `${BL_URL}/users/login`,
-      { login : LOGIN, password : PASSWORD},
+      JSON.stringify({ login : LOGIN, password : PASSWORD}),
       { headers: loginRequestHeaders})
       .then(async function(response) {
         user_token = response.data["user-token"];
@@ -58,6 +61,7 @@ getAsync('usertoken').then(async function(res) {
         console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +redisResult);
 
     }).catch((err) => {
+      console.log(`${BL_URL}/users/login`)
       console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +"LOGIN to backendless FAILED!");
       console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +err);
       Sentry.captureMessage(err);
@@ -100,15 +104,15 @@ TokenBurner.events.Burn({fromBlock: "latest" })
     console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +"Burn event:", parseInt(returns['_count']), value, txID)
 
     axios.post(
-      `${BL_URL }/data/${TABLE}`, {
+      `${BL_URL }/data/${TABLE}`, JSON.stringify({
         "count" : parseInt(returns['_count']),
         "deliveryPeriod" : parseInt(returns['_deliveryPeriod']),
         "from" : returns['_from'],
         "pubKey" : pubkey,
         "value" : value,
         "transactionHash" : txID
-      },
-      { headers: {"user-token" : user_token}})
+      }),
+      { headers: {"user-token" : user_token, "Content-Type": "application/json"}})
       .then(function(response){
         if (response.status == 200) {
           console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +"Data saved with ID " + response.data['objectId'])
@@ -149,9 +153,13 @@ var rescan = async () => {
     let burnCount = result;
     console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +"----- SCHEDULER: Current burn count " + burnCount);
     let response = await axios.get(
-      `${BL_URL}/data/${TABLE}?props=Count(objectId)`,
-      {"user-token" : user_token}
-    );
+      `${BL_URL}/data/${TABLE}?property=Count(objectId)`,
+      {/*"user-token" : user_token*/}
+    ).catch((error) => {
+      console.log(`${BL_URL}/data/${TABLE}?property=Count(objectId)`);
+      console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +"Backendless error:")
+      console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +error);
+    });
     let entryCount = response.data[0].count;
     console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +"----- SCHEDULER: Current entry count " + entryCount);
 
@@ -183,21 +191,30 @@ var rescan = async () => {
           returns = events[i].returnValues;
           response = await axios.get(
             `${BL_URL}/data/${TABLE}?where=count%3D${returns._count}`,
-            {"user-token" : user_token}
+            {/*"user-token" : user_token*/}
           );
 
           if (response.data.length != 0) continue;
           console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +"----- SCHEDULER: Found a missing entry with transactionHash "+ events[i].transactionHash +". Writing into the database ... ");
-          axios.post(
-            `${BL_URL}/data/${TABLE}`, {
+          console.log(`${BL_URL}/data/${TABLE}`);
+          console.log( JSON.stringify({
             "count" : parseInt(returns['_count']),
             "deliveryPeriod" : parseInt(returns['_deliveryPeriod']),
             "from" : returns['_from'],
             "pubKey" : web3.utils.toUtf8(returns['_pubkey']),
             "value" : returns['_value'],
             "transactionHash" : events[i].transactionHash
-          },
-          { headers: {"user-token" : user_token}})
+          }));
+          axios.post(
+            `${BL_URL}/data/${TABLE}`, JSON.stringify({
+            "count" : parseInt(returns['_count']),
+            "deliveryPeriod" : parseInt(returns['_deliveryPeriod']),
+            "from" : returns['_from'],
+            "pubKey" : web3.utils.toUtf8(returns['_pubkey']),
+            "value" : returns['_value'],
+            "transactionHash" : events[i].transactionHash
+          }),
+          { headers: {"user-token" : user_token, "Content-Type": "application/json"}})
           .then(function(response){
             if (response.status == 200) {
               console.log(`${timestamp('DD.MM.YYYY : HH:MM.ss')} ` +"----- SCHEDULER: Data saved with ID " + response.data['objectId'])
